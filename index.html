@@ -1345,14 +1345,15 @@ function mountToggle(){
 }
 
 function updatePlayer(dt){
-  /* --- 读输入合成移动方向（相机相对） --- */
-  let mx=input.moveX, my=input.moveY;
-  if (input.keys['KeyW']) my-=1;
-  if (input.keys['KeyS']) my+=1;
-  if (input.keys['KeyA']) mx-=1;
-  if (input.keys['KeyD']) mx+=1;
-  const mLen=Math.hypot(mx,my);
-  if (mLen>1){ mx/=mLen; my/=mLen; }
+  /* --- 读输入合成移动方向（相机相对） ---
+     统一约定：输入向量 ix(右+) / iz(前+)，相机前方 fwd=(sin yaw, cos yaw) */
+  let ix=input.moveX, iz=-input.moveY;          // 摇杆上推(my<0) = 前进
+  if (input.keys['KeyW']) iz+=1;
+  if (input.keys['KeyS']) iz-=1;
+  if (input.keys['KeyA']) ix-=1;
+  if (input.keys['KeyD']) ix+=1;
+  const mLen=Math.hypot(ix,iz);
+  if (mLen>1){ ix/=mLen; iz/=mLen; }
   const sprint = input.dashHold || input.keys['ShiftLeft'] || input.keys['ShiftRight'];
 
   /* --- 镜头角度 --- */
@@ -1360,13 +1361,17 @@ function updatePlayer(dt){
   cam.pitch  = clamp(cam.pitch + input.lookDY*0.0028, -0.55, 1.1);
   input.lookDX=input.lookDY=0;
 
+  /* 相机前方与右方（水平面），世界移动方向 = fwd*iz + right*ix */
+  const fx=Math.sin(cam.yaw), fz=Math.cos(cam.yaw);
+  const rx=fz, rz=-fx;
+  const moveDir = Math.atan2(fx*iz+rx*ix, fz*iz+rz*ix);
+
   if (STATE.riding){
     /* ================= 骑乘模式 ================= */
     const target = mLen>0.05 ? (sprint?16:8.5) : 0;
     horse.speed = lerp(horse.speed, target, dt*3);
     if (mLen>0.05){
-      const dir = Math.atan2(mx,-my) + cam.yaw;      // 摇杆相对镜头方向
-      let dy = dir - horse.yaw;
+      let dy = moveDir - horse.yaw;
       while(dy>Math.PI)dy-=TAU; while(dy<-Math.PI)dy+=TAU;
       horse.yaw += clamp(dy, -2.6*dt, 2.6*dt);
     }
@@ -1396,9 +1401,12 @@ function updatePlayer(dt){
   } else {
     /* ================= 步行模式 ================= */
     const speed = sprint ? player.speedSprint : player.speedWalk;
-    const dir = Math.atan2(mx,-my) + cam.yaw;
     let vx=0, vz=0;
-    if (mLen>0.05){ vx=Math.sin(dir)*speed*mLen; vz=Math.cos(dir)*speed*mLen; player.yaw=dir; }
+    if (mLen>0.05){
+      vx=Math.sin(moveDir)*speed*mLen;
+      vz=Math.cos(moveDir)*speed*mLen;
+      player.yaw=moveDir;
+    }
 
     /* 重力 */
     player.vel.y -= 22*dt;
