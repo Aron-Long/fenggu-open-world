@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<!-- 视口：禁止缩放、cover 全屏 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>风与枫谷 · 3D 开放世界</title>
+<style>
+  /* ================= 全局与防触摸干扰 ================= */
+  * { margin:0; padding:0; box-sizing:border-box;
+      -webkit-user-select:none; user-select:none;
+      -webkit-tap-highlight-color:transparent; }
+  html, body { width:100%; height:100%; overflow:hidden; position:fixed;
+      background:#0a0e14; touch-action:none; overscroll-behavior:none;
+      font-family: -apple-system, "PingFang SC", "Helvetica Neue", "Segoe UI", sans-serif; }
+  #game { position:fixed; inset:0; }
+  canvas { display:block; }
+
+  /* 安全区域变量（刘海/灵动岛/Home Indicator） */
+  :root {
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+  }
+
+  /* ================= 启动界面（东方山村 · 暮金暖调） ================= */
+  #boot { position:fixed; inset:0; z-index:100; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:18px;
+      background: radial-gradient(130% 110% at 50% 0%, #3a2418 0%, #14100c 55%, #0a0806 100%); color:#f2e4c8; }
+  #boot h1 { font-size:clamp(26px,6vw,52px); letter-spacing:.28em; font-weight:700;
+      font-family: Georgia, "Songti SC", "SimSun", serif;
+      background:linear-gradient(180deg,#ffe9b8,#e8a54e);
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+      text-shadow:0 0 30px rgba(232,165,78,.25); }
+  #boot .sub { opacity:.65; font-size:clamp(12px,2.4vw,16px); letter-spacing:.12em; }
+  #boot .tips { font-size:clamp(12px,2.6vw,15px); line-height:1.9; opacity:.85;
+      background:rgba(255,220,160,.05); padding:14px 22px; border-radius:14px;
+      border:1px solid rgba(255,210,150,.14); max-width:86%; }
+  #startBtn { margin-top:10px; font-size:clamp(18px,4vw,26px); font-weight:700;
+      font-family: Georgia, "Songti SC", serif; letter-spacing:.2em;
+      color:#2a1503; padding:16px 56px; border:none; border-radius:999px;
+      background:linear-gradient(135deg,#ffd98e,#d98e3a);
+      box-shadow:0 6px 30px rgba(217,142,58,.45); }
+  #startBtn:active { transform:scale(.96); }
+  #rotateHint { display:none; align-items:center; gap:10px; color:#ffd479; font-size:15px; }
+  #rotateHint .phone { width:30px; height:52px; border:3px solid #ffd479; border-radius:7px;
+      animation:rot 1.6s ease-in-out infinite; }
+  @keyframes rot { 0%,20%{transform:rotate(0)} 60%,100%{transform:rotate(90deg)} }
+  /* 竖屏时提示旋转（仍允许开始） */
+  @media (orientation:portrait) { #rotateHint { display:flex; } }
+  #boot .qrow { display:flex; gap:10px; }
+  #boot .qbtn { padding:8px 18px; border-radius:999px; border:1px solid rgba(255,220,160,.3);
+      color:#ecd9b8; background:transparent; font-size:14px; }
+  #boot .qbtn.on { background:#d98e3a; color:#2a1503; border-color:#d98e3a; font-weight:700; }
+
+  /* 电影感暗角 + 轻微暖色渐晕（纯 CSS，零性能开销） */
+  #vignette { position:fixed; inset:0; z-index:5; pointer-events:none; display:none;
+      background:
+        radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(8,5,3,.42) 100%),
+        linear-gradient(180deg, rgba(30,15,5,.10) 0%, transparent 22%, transparent 78%, rgba(10,6,4,.16) 100%); }
+
+  /* ================= HUD（安全区内） ================= */
+  #hud { position:fixed; inset:0; z-index:10; pointer-events:none; display:none;
+      padding-top:calc(var(--sat) + 8px);
+      padding-bottom:calc(var(--sab) + 8px);
+      padding-left:calc(var(--sal) + 10px);
+      padding-right:calc(var(--sar) + 10px); }
+  .hud-top { position:absolute; top:calc(var(--sat) + 8px); left:50%; transform:translateX(-50%);
+      display:flex; gap:14px; align-items:center; color:#eaf4ff;
+      font-size:clamp(11px,2.2vw,14px); text-shadow:0 1px 3px rgba(0,0,0,.8); }
+  .hud-top .clock { background:rgba(0,0,0,.35); padding:4px 14px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.15); white-space:nowrap; }
+  /* 血条 */
+  #hpWrap { position:absolute; top:calc(var(--sat) + 8px); left:calc(var(--sal) + 12px); width:min(180px,26vw); }
+  #hpBar { height:10px; border-radius:6px; background:rgba(0,0,0,.45); overflow:hidden;
+      border:1px solid rgba(255,255,255,.2); }
+  #hpFill { height:100%; width:100%; border-radius:6px;
+      background:linear-gradient(90deg,#ff5f6d,#ff9966); transition:width .2s; }
+  #hpWrap .lbl { color:#fff; font-size:10px; text-shadow:0 1px 2px #000; margin-bottom:2px; }
+  #hint { position:absolute; top:calc(var(--sat) + 44px); left:50%; transform:translateX(-50%);
+      color:#ffe9a8; font-size:clamp(12px,2.6vw,15px); text-shadow:0 1px 3px #000;
+      background:rgba(0,0,0,.35); padding:5px 16px; border-radius:999px; opacity:0; transition:opacity .3s;
+      white-space:nowrap; max-width:90%; }
+  #crosshair { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+      width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.9);
+      box-shadow:0 0 6px rgba(255,255,255,.7); display:none; }
+
+  /* 顶部功能按钮（全屏/暂停/视角/声音/画质） */
+  #topBtns { position:absolute; top:calc(var(--sat) + 6px); right:calc(var(--sar) + 10px);
+      display:flex; gap:8px; pointer-events:auto; }
+  .icon-btn { width:clamp(36px,8.5vw,44px); height:clamp(36px,8.5vw,44px); border-radius:12px;
+      border:1px solid rgba(255,255,255,.22); background:rgba(10,16,26,.55); color:#dfeaf5;
+      font-size:clamp(15px,3.4vw,19px); display:flex; align-items:center; justify-content:center; }
+  .icon-btn:active { background:rgba(56,165,248,.6); }
+
+  /* ================= 虚拟摇杆（左下） ================= */
+  #joyZone { position:absolute; left:calc(var(--sal) + 14px); bottom:calc(var(--sab) + 16px);
+      width:clamp(110px,26vw,150px); height:clamp(110px,26vw,150px); pointer-events:auto; }
+  #joyBase { position:absolute; inset:0; border-radius:50%;
+      background:radial-gradient(circle at 50% 50%, rgba(255,255,255,.08), rgba(255,255,255,.03));
+      border:2px solid rgba(255,255,255,.22); }
+  #joyKnob { position:absolute; width:44%; height:44%; left:28%; top:28%; border-radius:50%;
+      background:radial-gradient(circle at 35% 30%, rgba(255,255,255,.55), rgba(140,190,255,.35));
+      border:2px solid rgba(255,255,255,.5); box-shadow:0 2px 10px rgba(0,0,0,.4); }
+
+  /* ================= 右侧动作按钮 ================= */
+  #actBtns { position:absolute; right:calc(var(--sar) + 12px); bottom:calc(var(--sab) + 14px);
+      width:clamp(150px,34vw,190px); height:clamp(140px,32vw,180px); pointer-events:none; }
+  .abtn { position:absolute; border-radius:50%; border:2px solid rgba(255,255,255,.3);
+      background:rgba(10,16,26,.55); color:#eaf4ff; pointer-events:auto;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      font-size:clamp(10px,2.2vw,12px); gap:1px; text-shadow:0 1px 2px #000; }
+  .abtn .ic { font-size:clamp(16px,4vw,22px); }
+  .abtn:active, .abtn.hold { background:rgba(56,165,248,.65); transform:scale(.94); }
+  #btnJump  { width:34%; aspect-ratio:1; right:0;    bottom:0; }
+  #btnAtk   { width:34%; aspect-ratio:1; right:38%; bottom:26%; }
+  #btnDash  { width:28%; aspect-ratio:1; right:0;    bottom:44%; }
+  #btnUse   { width:28%; aspect-ratio:1; right:72%; bottom:0; }
+  #btnHorse { width:28%; aspect-ratio:1; right:70%; bottom:52%; }
+
+  /* 镜头滑动区域指示（右半屏，仅开发提示用，实际不可见） */
+  #lookZone { position:absolute; right:0; top:0; width:55%; height:100%; pointer-events:auto; }
+
+  /* ================= 暂停菜单 ================= */
+  #pause { position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center;
+      background:rgba(4,8,14,.72); backdrop-filter:blur(6px); }
+  #pause .panel { background:rgba(16,24,38,.95); border:1px solid rgba(255,255,255,.14);
+      border-radius:18px; padding:26px 30px; display:flex; flex-direction:column; gap:14px;
+      min-width:min(300px,80vw); }
+  #pause h2 { color:#f2e4c8; text-align:center; letter-spacing:.3em; font-size:20px;
+      font-family: Georgia, "Songti SC", serif; }
+  #pause .prow { display:flex; align-items:center; justify-content:space-between; gap:12px; color:#ecd9b8; }
+  #pause .qbtn { padding:7px 16px; border-radius:999px; border:1px solid rgba(255,220,160,.3);
+      background:transparent; color:#ecd9b8; font-size:13px; }
+  #pause .qbtn.on { background:#d98e3a; color:#2a1503; border-color:#d98e3a; font-weight:700; }
+  #resumeBtn { margin-top:6px; padding:12px; border:none; border-radius:12px; font-size:16px;
+      font-weight:700; background:linear-gradient(135deg,#ffd98e,#d98e3a); color:#2a1503; }
+
+  /* 伤害数字层 */
+  .dmg { position:fixed; z-index:20; color:#ffd25e; font-weight:800; pointer-events:none;
+      text-shadow:0 2px 4px #000; animation:dmgUp .8s ease-out forwards; font-size:18px; }
+  @keyframes dmgUp { to { transform:translateY(-46px); opacity:0; } }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="vignette"></div>
+
+<!-- ============ 启动界面 ============ -->
+<div id="boot">
+  <h1>风 与 枫 谷</h1>
+  <div class="sub">东 方 山 村 · 3D 开 放 世 界 · 骑 马 / 跑 酷 / 战 斗 / 昼 夜 天 气</div>
+  <div id="rotateHint"><div class="phone"></div><span>建议横屏游玩，体验更佳</span></div>
+  <div class="tips">
+    🕹️ 左下摇杆移动 · 右半屏滑动转镜头<br>
+    ⚔️ 右侧按钮：跳跃 / 攻击 / 冲刺 / 互动 / 上马<br>
+    🏇 靠近马匹点「上马」· 屋顶可攀爬翻越<br>
+    🖥️ 桌面端：WASD + 鼠标 / 空格跳 / 左键攻击 / E互动 / Shift冲刺 / V视角
+  </div>
+  <div class="qrow" id="bootQuality">
+    <button class="qbtn" data-q="low">低画质</button>
+    <button class="qbtn on" data-q="med">中画质</button>
+    <button class="qbtn" data-q="high">高画质</button>
+  </div>
+  <div id="loadWrap" style="width:min(320px,70vw);display:flex;flex-direction:column;gap:8px;align-items:center;">
+    <div style="width:100%;height:6px;border-radius:6px;background:rgba(255,255,255,.12);overflow:hidden;">
+      <div id="loadBar" style="height:100%;width:0%;background:linear-gradient(90deg,#ffd98e,#d98e3a);transition:width .2s;"></div>
+    </div>
+    <div id="loadText" style="font-size:13px;opacity:.75;">正在加载模型资源…</div>
+  </div>
+  <button id="startBtn">开 始 游 戏</button>
+</div>
+
+<!-- ============ HUD ============ -->
+<div id="hud">
+  <div id="lookZone"></div>
+  <div class="hud-top"><span class="clock" id="clock">☀️ 08:00 · 晴</span></div>
+  <div id="hpWrap"><div class="lbl">生命</div><div id="hpBar"><div id="hpFill"></div></div></div>
+  <div id="hint"></div>
+  <div id="crosshair"></div>
+  <div id="topBtns">
+    <button class="icon-btn" id="btnCam" title="视角">🎥</button>
+    <button class="icon-btn" id="btnMute" title="声音">🔊</button>
+    <button class="icon-btn" id="btnFull" title="全屏">⛶</button>
+    <button class="icon-btn" id="btnPause" title="暂停">⏸</button>
+  </div>
+  <div id="joyZone"><div id="joyBase"></div><div id="joyKnob"></div></div>
+  <div id="actBtns">
+    <button class="abtn" id="btnHorse"><span class="ic">🐎</span>上马</button>
+    <button class="abtn" id="btnUse"><span class="ic">✋</span>互动</button>
+    <button class="abtn" id="btnDash"><span class="ic">💨</span>冲刺</button>
+    <button class="abtn" id="btnAtk"><span class="ic">⚔️</span>攻击</button>
+    <button class="abtn" id="btnJump"><span class="ic">⬆️</span>跳跃</button>
+  </div>
+</div>
+
+<!-- ============ 暂停菜单 ============ -->
+<div id="pause">
+  <div class="panel">
+    <h2>暂 停</h2>
+    <div class="prow"><span>画质</span>
+      <span id="pauseQuality">
+        <button class="qbtn" data-q="low">低</button>
+        <button class="qbtn on" data-q="med">中</button>
+        <button class="qbtn" data-q="high">高</button>
+      </span>
+    </div>
+    <div class="prow"><span>视角</span>
+      <span><button class="qbtn" id="pqCam">第三人称</button></span>
+    </div>
+    <div class="prow"><span>声音</span>
+      <span><button class="qbtn" id="pqMute">开</button></span>
+    </div>
+    <button id="resumeBtn">继续游戏</button>
+  </div>
+</div>
+
+<!-- Three.js 通过 CDN 引入（es-module + importmap） -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
+
+/* ============================================================
+ * 0. 全局状态与工具
+ * ============================================================ */
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp  = (a,b,t)=>a+(b-a)*t;
+const rand  = (a,b)=>a+Math.random()*(b-a);
+const TAU = Math.PI*2;
+
+const STATE = {
+  started:false, paused:false, muted:false,
+  firstPerson:false,
+  quality:'med',
+  timeOfDay: 0.34,          // 0~1，0.25=清晨 0.5=正午 0.75=黄昏
+  weather:'clear',          // clear / rain / snow / fog
+  weatherT: 0,              // 距下次天气变化
+  riding:false,
+};
+
+/* 确定性伪随机（世界生成可复现） */
+function mulberry32(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0;
+  let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t;
+  return ((t^t>>>14)>>>0)/4294967296; }; }
+const rng = mulberry32(20260728);
+
+/* ============================================================
+ * 1. 性能分级（画质预设 + 自动降级）
+ * ============================================================ */
+const QUALITY = {
+  low : { pr:0.7, shadow:false, shadowRes:512,  fogFar:170, treeMul:0.4, grassMul:0.2, particles:120, ibl:false },
+  med : { pr:1.0, shadow:true,  shadowRes:1024, fogFar:230, treeMul:0.75,grassMul:0.5, particles:300, ibl:false },
+  high: { pr:1.5, shadow:true,  shadowRes:2048, fogFar:320, treeMul:1.0, grassMul:1.0, particles:600, ibl:true  },
+};
+let Q = QUALITY.med;
+const fpsStat = { acc:0, n:0, lowT:0 };
+
+/* ============================================================
+ * 2. 渲染器 / 场景 / 相机 / 光照
+ * ============================================================ */
+const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, Q.pr));
+renderer.shadowMap.enabled = Q.shadow;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+/* 电影感：ACES 色调映射（高光自然滚降、色彩更胶片） */
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+$('game').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xd8e2ea, 30, Q.fogFar);
+
+const camera = new THREE.PerspectiveCamera(68, innerWidth/innerHeight, 0.1, 800);
+
+/* ============================================================
+ * 2.5 资源加载：GLB/GLTF 模型 + HDR 环境（含失败回退）
+ *     人物/马匹/敌人 用带动画的 GLB；建筑/树木 用真实 GLTF 模型；
+ *     HDR 提供 PBR 环境光照（IBL）。全部存于 ./assets。
+ * ============================================================ */
+const ASSETS = {
+  models: {
+    knight:   'assets/models/Knight.glb',
+    horse:    'assets/models/Horse.glb',
+    skeleton: 'assets/models/Skeleton_Warrior.glb',
+    buildings:[ 'assets/models/buildings/building_A.gltf',
+                'assets/models/buildings/building_B.gltf',
+                'assets/models/buildings/building_C.gltf',
+                'assets/models/buildings/building_D.gltf',
+                'assets/models/buildings/building_E.gltf' ],
+    trees:    [ 'assets/models/trees/tree_pine_orange_large.gltf',
+                'assets/models/trees/tree_pine_yellow_large.gltf',
+                'assets/models/trees/tree_dead_large.gltf' ],
+  },
+  envHDR: 'assets/env/env.hdr',
+};
+const LIB = { ok:false, buildings:[], trees:[] };   // 全局资源库
+const gltfLoader = new GLTFLoader();
+const loadProg = { done:0, total: 3 + ASSETS.models.buildings.length + ASSETS.models.trees.length };
+function bumpProgress(){
+  loadProg.done++;
+  const el = document.getElementById('loadBar');
+  if (el) el.style.width = Math.round(loadProg.done/loadProg.total*100)+'%';
+}
+function loadGLTF(url, timeoutMs=25000){
+  return new Promise(res=>{
+    let settled=false;
+    const done=v=>{ if(!settled){ settled=true; bumpProgress(); res(v); } };
+    const timer=setTimeout(()=>{ console.warn('模型加载超时(回退):', url); done(null); }, timeoutMs);
+    gltfLoader.load(url,
+      g=>{ clearTimeout(timer); done(g); },
+      undefined,
+      err=>{ clearTimeout(timer); console.warn('模型加载失败(使用回退):', url, err && err.message); done(null); });
+  });
+}
+/* HDR 环境（仅高画质启用 IBL，移动端中低画质省电，用半球光近似） */
+function loadEnvironment(){
+  if (!Q.ibl) return;
+  new RGBELoader().load(ASSETS.envHDR, tex=>{
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromEquirectangular(tex).texture;
+    scene.environmentIntensity = 0.55;   // 轻微 IBL，避免盖过方向光的电影感
+    tex.dispose(); pmrem.dispose();
+  }, undefined, ()=>console.warn('HDR 环境加载失败，继续使用半球光'));
+}
+
+const hemi = new THREE.HemisphereLight(0xbfd4e8, 0x6a5a3a, 0.85);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffe8c8, 2.0);
+sun.castShadow = Q.shadow;
+sun.shadow.mapSize.set(Q.shadowRes, Q.shadowRes);
+sun.shadow.camera.left=-60; sun.shadow.camera.right=60;
+sun.shadow.camera.top=60;   sun.shadow.camera.bottom=-60;
+sun.shadow.camera.far=400;
+sun.shadow.bias = -0.0004;
+scene.add(sun); scene.add(sun.target);
+
+/* ============================================================
+ * 3. 天空（自定义渐变 + 太阳 + 星星）与云
+ * ============================================================ */
+const skyUniforms = {
+  topColor:    { value: new THREE.Color(0x2f6fb8) },
+  bottomColor: { value: new THREE.Color(0xd8e4ee) },
+  sunDir:      { value: new THREE.Vector3(0,1,0) },
+  sunColor:    { value: new THREE.Color(0xfff2cc) },
+  horizonWarm: { value: new THREE.Color(0xff9a4e) },
+  duskAmt:     { value: 0 },
+  nightMix:    { value: 0 },
+};
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite:false, fog:false,
+  uniforms: skyUniforms,
+  vertexShader:`varying vec3 vDir; void main(){ vDir=normalize(position);
+    gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader:`
+    uniform vec3 topColor, bottomColor, sunColor, horizonWarm;
+    uniform vec3 sunDir; uniform float duskAmt, nightMix;
+    varying vec3 vDir;
+    // 简易 hash 星点
+    float hash(vec3 p){ return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453); }
+    void main(){
+      vec3 d = normalize(vDir);
+      float h = clamp(d.y, 0.0, 1.0);
+      vec3 col = mix(bottomColor, topColor, pow(h, 0.72));
+      float s = max(dot(d, normalize(sunDir)), 0.0);
+      // 太阳本体 + 光晕
+      col += sunColor * (pow(s, 700.0)*1.6 + pow(s, 32.0)*0.30);
+      // 电影感：晨昏沿太阳方位的宽阔暖色光带
+      float belt = pow(s, 5.0) * (1.0 - abs(d.y)*0.7);
+      col += horizonWarm * belt * duskAmt * 0.55;
+      // 地平线附近的暮霭暖晕
+      col += horizonWarm * pow(1.0 - abs(d.y), 6.0) * duskAmt * 0.35;
+      // 夜晚星星
+      if (nightMix > 0.02 && d.y > 0.0) {
+        vec3 sp = floor(d*160.0);
+        float st = step(0.9975, hash(sp));
+        col += vec3(st) * nightMix * (0.5+0.5*hash(sp+1.0));
+      }
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+});
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(650, 24, 16), skyMat));
+
+/* 云：实例化半透明棉球 */
+const cloudMat = new THREE.MeshLambertMaterial({ color:0xffffff, transparent:true, opacity:0.75, fog:false });
+const cloudGeo = new THREE.IcosahedronGeometry(1, 1);
+const CLOUD_N = 40;
+const clouds = new THREE.InstancedMesh(cloudGeo, cloudMat, CLOUD_N);
+clouds.frustumCulled = false;
+const cloudData = [];
+{ const m4=new THREE.Matrix4(), q=new THREE.Quaternion(), p=new THREE.Vector3(), s=new THREE.Vector3();
+  for (let i=0;i<CLOUD_N;i++){
+    p.set(rand(-420,420), rand(70,120), rand(-420,420));
+    s.set(rand(10,26), rand(3,6), rand(8,16));
+    m4.compose(p,q,s); clouds.setMatrixAt(i,m4);
+    cloudData.push({p:p.clone(), s:s.clone(), v:rand(0.6,1.6)});
+  } }
+scene.add(clouds);
+
+/* ============================================================
+ * 4. 地形系统：高度场函数 + 网格 + 村庄/道路/生物群系
+ * ============================================================ */
+const WORLD = 520;            // 世界边长
+const SEG   = 128;            // 网格分段（移动端友好）
+const CELL  = WORLD/SEG;
+
+/* 平滑值噪声 */
+function makeNoise(seed){
+  const r = mulberry32(seed), perm = new Uint8Array(512), p = [...Array(256).keys()];
+  for (let i=255;i>0;i--){ const j=(r()*(i+1))|0; [p[i],p[j]]=[p[j],p[i]]; }
+  for (let i=0;i<512;i++) perm[i]=p[i&255];
+  const fade=t=>t*t*t*(t*(t*6-15)+10);
+  const g=h=>(h&1?1:-1);
+  return function(x,y){
+    const X=Math.floor(x)&255, Y=Math.floor(y)&255;
+    x-=Math.floor(x); y-=Math.floor(y);
+    const u=fade(x), v=fade(y);
+    const aa=perm[perm[X]+Y], ab=perm[perm[X]+Y+1], ba=perm[perm[X+1]+Y], bb=perm[perm[X+1]+Y+1];
+    return lerp( lerp(g(aa)* (1-Math.abs(x%1)) +aa*0, g(ba), u), lerp(g(ab), g(bb), u), v)*0
+         + lerp(lerp(((aa&1)?x:-x)+((aa&2)?y:-y), ((ba&1)?x-1:1-x)+((ba&2)?y:-y), u),
+                lerp(((ab&1)?x:-x)+((ab&2)?y-1:1-y), ((bb&1)?x-1:1-x)+((bb&2)?y-1:1-y), u), v)*0.5;
+  };
+}
+const n1 = makeNoise(11), n2 = makeNoise(37), n3 = makeNoise(91);
+
+/* 村庄中心与道路（沿 z 穿过村庄，弯曲） */
+const VILLAGE = { x:0, z:0, r:52 };
+function roadX(z){ return Math.sin(z*0.012)*14 + Math.sin(z*0.03)*4; }   // 道路中心线 x(z)
+const distVillage = (x,z)=>Math.hypot(x-VILLAGE.x, z-VILLAGE.z);
+const distRoad    = (x,z)=>Math.abs(x-roadX(z));
+
+function baseHeight(x,z){
+  const dV = distVillage(x,z);
+  /* 山谷平地 + 边缘山脉 */
+  let h = 0;
+  h += n1(x*0.008, z*0.008) * 6;                 // 大起伏
+  h += n2(x*0.03,  z*0.03)  * 2.0;               // 中起伏
+  h += n3(x*0.09,  z*0.09)  * 0.5;               // 细节
+  const edge = Math.max(Math.abs(x),Math.abs(z))/ (WORLD*0.5);
+  h += Math.pow(clamp(edge*1.25-0.35,0,1), 2.2) * 55;   // 四周山脉
+  h += Math.max(0, n1(x*0.004+9, z*0.004-7)) * 18 * clamp(edge*1.6,0,1); // 远山加重
+  /* 村庄压平 */
+  const flat = 1 - clamp(1 - (dV - VILLAGE.r*0.45)/(VILLAGE.r*0.9), 0, 1);
+  h = lerp(h, 1.2, clamp(flat,0,1));
+  /* 道路进一步压平 */
+  const rf = clamp(1 - distRoad(x,z)/10, 0, 1);
+  h = lerp(h, h*0.45 + 0.9, rf*0.85);
+  return h;
+}
+const getHeight = baseHeight;      // 地形物理采样
+
+/* 顶点着色（东方山村：暖青草坡/墨绿林地/青灰岩壁/雪顶/土路） */
+function groundColor(x,z,h,out){
+  const slope = Math.abs(getHeight(x+1.5,z)-h) + Math.abs(getHeight(x,z+1.5)-h);
+  const moist = (n2(x*0.02+50, z*0.02-30)+1)*0.5;
+  const meadow= (n3(x*0.05+7,  z*0.05+3 )+1)*0.5;   // 草甸色斑
+  /* 暖绿基调，湿润处偏墨绿 */
+  let r=0.30+moist*0.05+meadow*0.06;
+  let g=0.46+moist*0.06+meadow*0.05;
+  let b=0.20+moist*0.02;
+  if (h > 26) { const t=clamp((h-26)/12,0,1); r=lerp(r,0.93,t); g=lerp(g,0.94,t); b=lerp(b,0.97,t); } // 雪顶
+  else if (slope > 2.4 || h > 16) { const t=clamp(Math.max(slope/3.5,(h-16)/10),0,1);
+    r=lerp(r,0.42,t); g=lerp(g,0.40,t); b=lerp(b,0.42,t); }   // 青灰岩壁
+  if (distVillage(x,z) < VILLAGE.r*0.7) { r=lerp(r,0.52,0.55); g=lerp(g,0.43,0.55); b=lerp(b,0.30,0.55); } // 村内夯土
+  if (distRoad(x,z) < 4.2) { r=0.55; g=0.47; b=0.36; }        // 土路
+  out.setRGB(r,g,b);
+}
+
+/* 构建地形网格 */
+const terrain = (()=>{
+  const geo = new THREE.PlaneGeometry(WORLD, WORLD, SEG, SEG);
+  geo.rotateX(-Math.PI/2);
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count*3);
+  const c = new THREE.Color();
+  for (let i=0;i<pos.count;i++){
+    const x=pos.getX(i), z=pos.getZ(i), h=getHeight(x,z);
+    pos.setY(i,h);
+    groundColor(x,z,h,c);
+    colors[i*3]=c.r; colors[i*3+1]=c.g; colors[i*3+2]=c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors,3));
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshLambertMaterial({ vertexColors:true });
+  const m = new THREE.Mesh(geo, mat);
+  m.receiveShadow = true;
+  scene.add(m);
+  return m;
+})();
+
+/* ============================================================
+ * 5. 碰撞体注册表（AABB：房屋等）与圆形障碍（树干）
+ * ============================================================ */
+const aabbs = [];    // {minX,maxX,minZ,maxZ,top} 房屋：可站立屋顶
+const circles = [];  // {x,z,r} 树干等
+function addAABB(cx,cz,w,d,top){ aabbs.push({minX:cx-w/2,maxX:cx+w/2,minZ:cz-d/2,maxZ:cz+d/2,top}); }
+
+/* ============================================================
+ * 6. 植被：实例化树木 / 草地 / 岩石
+ *    电影感要点：着色器风摇（草浪与树冠随风起伏）+ 红枫点缀
+ * ============================================================ */
+const dummy = new THREE.Object3D();
+function scatterPositions(count, filter){
+  const pts=[]; let guard=0;
+  while (pts.length<count && guard++<count*30){
+    const x=(rng()*2-1)*WORLD*0.47, z=(rng()*2-1)*WORLD*0.47;
+    if (filter(x,z)) pts.push([x,z]);
+  }
+  return pts;
+}
+const inVillage = (x,z)=>distVillage(x,z)<VILLAGE.r*0.85;
+const onRoad    = (x,z)=>distRoad(x,z)<6;
+
+/* --- 风摇：向 Lambert 材质注入顶点着色器位移（按顶点高度加权） --- */
+const WIND = { t:{value:0}, amp:{value:0.16} };
+function windify(mat, amp){
+  mat.onBeforeCompile = (sh)=>{
+    sh.uniforms.uTime = WIND.t;
+    sh.uniforms.uAmp  = { value:amp };
+    sh.vertexShader = 'uniform float uTime; uniform float uAmp;\n' + sh.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+       {
+         vec4 wp = instanceMatrix * vec4(position, 1.0);
+         float hgt = clamp(position.y, 0.0, 3.0);
+         float ph = wp.x*0.35 + wp.z*0.45;
+         transformed.x += (sin(uTime*1.6+ph)*0.6 + sin(uTime*3.1+ph*1.7)*0.4) * uAmp * hgt;
+         transformed.z += cos(uTime*1.3+ph*0.8) * uAmp * 0.55 * hgt;
+       }`
+    );
+  };
+  return mat;
+}
+/* 红枫/金杏调色板（实例颜色） */
+const LEAF_PALETTE = [0x3d7a3a, 0x3d7a3a, 0x4a7a38, 0xb04a28, 0xc06a2a, 0xd09a3a];
+
+/* --- 树：优先用 KayKit 真实松树 GLTF（实例化）；失败回退为锥形树冠 --- */
+function buildTrees(mult){
+  const spots = scatterPositions(Math.floor(520*mult), (x,z)=>{
+    const h=getHeight(x,z);
+    return !inVillage(x,z) && !onRoad(x,z) && h<22 && n1(x*0.015+3,z*0.015)>-0.15;
+  });
+  const n = spots.length;
+  const out = [];
+
+  if (LIB.trees.length){
+    /* 真实模型：提取每棵树的网格（KayKit 每棵树是单网格），做 InstancedMesh */
+    const src = LIB.trees[0];                     // 主树型（橙松）
+    let geo=null, mat=null;
+    src.traverse(o=>{ if(o.isMesh && !geo){ geo=o.geometry; mat=o.material; } });
+    if (geo){
+      /* 计算归一化缩放：让模型高约 6m */
+      geo.computeBoundingBox();
+      const bs=geo.boundingBox.getSize(new THREE.Vector3());
+      const baseS = 6/Math.max(bs.y,1e-3);
+      const trees = new THREE.InstancedMesh(geo, mat, n);
+      trees.castShadow = Q.shadow;
+      spots.forEach(([x,z],i)=>{
+        const h=getHeight(x,z), s=baseS*rand(0.7,1.4);
+        dummy.position.set(x,h,z); dummy.scale.setScalar(s); dummy.rotation.y=rng()*TAU;
+        dummy.updateMatrix(); trees.setMatrixAt(i,dummy.matrix);
+        circles.push({x,z,r:0.4});
+      });
+      scene.add(trees); out.push(trees);
+      return out;
+    }
+  }
+  /* 回退：锥形树冠 + 风摇 */
+  const trunkG = new THREE.CylinderGeometry(0.22,0.34,2.6,5);
+  const trunkM = new THREE.MeshLambertMaterial({ color:0x6b4a2f });
+  const leafG  = new THREE.ConeGeometry(1.9,4.6,6);
+  leafG.translate(0, 2.3, 0);
+  const leafM  = windify(new THREE.MeshLambertMaterial({ color:0xffffff }), 0.10);
+  const trunks = new THREE.InstancedMesh(trunkG, trunkM, n);
+  const leaves = new THREE.InstancedMesh(leafG,  leafM,  n);
+  trunks.castShadow = leaves.castShadow = Q.shadow;
+  const c = new THREE.Color();
+  spots.forEach(([x,z],i)=>{
+    const h=getHeight(x,z), s=rand(0.8,1.5);
+    dummy.position.set(x,h+1.3*s,z); dummy.scale.setScalar(s); dummy.rotation.y=rng()*TAU;
+    dummy.updateMatrix(); trunks.setMatrixAt(i,dummy.matrix);
+    dummy.position.y = h+2.55*s; dummy.updateMatrix(); leaves.setMatrixAt(i,dummy.matrix);
+    const nearV = distVillage(x,z) < VILLAGE.r*2.2;
+    const pi = nearV && rng()<0.45 ? 3+((rng()*3)|0) : (rng()<0.14 ? 3+((rng()*3)|0) : (rng()*3)|0);
+    leaves.setColorAt(i, c.setHex(LEAF_PALETTE[pi]).multiplyScalar(rand(0.85,1.1)));
+    circles.push({x,z,r:0.5*s});
+  });
+  scene.add(trunks, leaves);
+  return [trunks, leaves];
+}
+
+/* --- 草：细长叶片，成簇双色，整体随风成浪 --- */
+function buildGrass(mult){
+  const spots = scatterPositions(Math.floor(1600*mult), (x,z)=>{
+    const h=getHeight(x,z);
+    return !onRoad(x,z) && h<18 && distVillage(x,z)>8;
+  });
+  const g = new THREE.PlaneGeometry(0.55,1.05); g.translate(0,0.5,0);
+  const m = windify(new THREE.MeshLambertMaterial({ color:0xffffff, side:THREE.DoubleSide }), 0.22);
+  const grass = new THREE.InstancedMesh(g,m,spots.length);
+  const c = new THREE.Color();
+  spots.forEach(([x,z],i)=>{
+    dummy.position.set(x,getHeight(x,z),z);
+    dummy.scale.set(rand(0.8,1.3),rand(0.7,1.7),1); dummy.rotation.y=rng()*TAU;
+    dummy.updateMatrix(); grass.setMatrixAt(i,dummy.matrix);
+    /* 青绿到枯黄的自然变化 */
+    c.setHSL(0.24+rng()*0.05, rand(0.42,0.55), rand(0.28,0.42));
+    if (rng()<0.12) c.setHSL(0.11, 0.5, 0.4);       // 少量枯黄
+    grass.setColorAt(i,c);
+  });
+  scene.add(grass);
+  return grass;
+}
+
+/* --- 岩石 --- */
+function buildRocks(mult){
+  const spots = scatterPositions(Math.floor(140*mult), (x,z)=>!inVillage(x,z)&&!onRoad(x,z));
+  const g = new THREE.DodecahedronGeometry(1,0);
+  const m = new THREE.MeshLambertMaterial({ color:0x86857e });
+  const rocks = new THREE.InstancedMesh(g,m,spots.length);
+  rocks.castShadow = Q.shadow;
+  spots.forEach(([x,z],i)=>{
+    dummy.position.set(x,getHeight(x,z)+0.2,z);
+    dummy.scale.set(rand(0.4,1.6),rand(0.3,1.1),rand(0.4,1.6));
+    dummy.rotation.set(rng(),rng()*TAU,rng());
+    dummy.updateMatrix(); rocks.setMatrixAt(i,dummy.matrix);
+  });
+  scene.add(rocks);
+  return rocks;
+}
+
+/* --- 山谷流雾：贴地半透明片，缓慢漂移（电影感层次） --- */
+function buildMist(){
+  const n = 26;
+  const g = new THREE.PlaneGeometry(1,1);
+  const m = new THREE.MeshBasicMaterial({ color:0xe8eef2, transparent:true, opacity:0.13,
+    depthWrite:false, side:THREE.DoubleSide });
+  const mist = new THREE.InstancedMesh(g, m, n);
+  mist.renderOrder = 5;
+  mistData.length = 0;
+  for (let i=0;i<n;i++){
+    const x=(rng()*2-1)*WORLD*0.42, z=(rng()*2-1)*WORLD*0.42;
+    mistData.push({ x, z, y:getHeight(x,z)+rand(2,6), w:rand(30,70), v:rand(0.5,1.4) });
+  }
+  scene.add(mist);
+  return mist;
+}
+const mistData = [];
+
+/* --- 萤火/花粉飘浮粒子（黄昏与夜晚最亮） --- */
+const MOTE_N = 90;
+const moteGeo = new THREE.BufferGeometry();
+const motePos = new Float32Array(MOTE_N*3);
+moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos,3));
+const moteMat = new THREE.PointsMaterial({ color:0xffe6a0, size:0.3, transparent:true,
+  opacity:0.8, depthWrite:false, blending:THREE.AdditiveBlending });
+const motes = new THREE.Points(moteGeo, moteMat);
+motes.frustumCulled = false;
+const moteSeed = new Float32Array(MOTE_N*2);
+for (let i=0;i<MOTE_N;i++){ moteSeed[i*2]=rand(0,TAU); moteSeed[i*2+1]=rand(0.3,1); }
+scene.add(motes);
+function updateMotes(t){
+  const cx=camera.position.x, cz=camera.position.z;
+  for (let i=0;i<MOTE_N;i++){
+    const a=moteSeed[i*2], sp=moteSeed[i*2+1];
+    motePos[i*3]  = cx + Math.sin(a + t*0.10*sp)*22 + Math.sin(t*0.5*sp+i)*1.5;
+    motePos[i*3+1]= (camera.position.y-2) + 2.2 + Math.sin(t*0.7*sp+a)*1.6;
+    motePos[i*3+2]= cz + Math.cos(a*1.3 + t*0.08*sp)*22;
+  }
+  moteGeo.attributes.position.needsUpdate = true;
+}
+
+let vegMeshes = [];
+function buildVegetation(){
+  vegMeshes.forEach(m=>{ scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+  circles.length = 0;   // 重建时清掉旧树干碰撞体，避免无限累积
+  vegMeshes = [...buildTrees(Q.treeMul), buildGrass(Q.grassMul), buildRocks(Q.treeMul), buildMist()];
+}
+
+/* ============================================================
+ * 7. 东方山村：白墙木骨 + 黛瓦坡屋顶（可跑酷）+ 水车 + 纸灯笼
+ * ============================================================ */
+const windmillBlades = [];      // 水车轮
+const lanternHalos = [];        // 灯笼光晕精灵（夜间渐亮）
+function buildVillage(){
+  const group = new THREE.Group();
+  const wallM2= new THREE.MeshLambertMaterial({ color:0xd8cbb0 });   // 水车基座石材
+
+  /* 环形布局 + 沿路布局 */
+  const houses=[];
+  for (let i=0;i<14;i++){
+    const a=i/14*TAU + rng()*0.3;
+    const r=VILLAGE.r*rand(0.35,0.62);
+    houses.push([VILLAGE.x+Math.cos(a)*r, VILLAGE.z+Math.sin(a)*r, a+Math.PI/2]);
+  }
+  for (let z=-120; z<=150; z+=rand(22,30)){
+    const side = rng()>0.5?1:-1;
+    houses.push([roadX(z)+side*rand(8,12), z, side>0?-Math.PI/2:Math.PI/2]);
+  }
+
+  houses.forEach(([x,z,rot],idx)=>{
+    const h0=getHeight(x,z);
+    const w=rand(5,7), d=rand(5,7), hh=rand(2.8,3.4);
+    /* AABB 碰撞（近似，不随旋转精细收缩——对跑酷足够） */
+    const ext=Math.max(w,d)/2*1.0;
+    addAABB(x,z,ext*2,ext*2,h0+hh);          // 站立面 = 墙顶（檐口）
+    /* 门侧纸灯笼（夜晚暖光，无真实点光源） */
+    if (idx%2===0){
+      const dx=Math.sin(rot)*(d/2+0.02), dz=Math.cos(rot)*(d/2+0.02);
+      const lm=new THREE.MeshBasicMaterial({ color:0xffb45e });
+      const ball=new THREE.Mesh(new THREE.SphereGeometry(0.24,8,6), lm);
+      ball.position.set(x+dx+Math.cos(rot)*0.9, h0+2.3, z+dz-Math.sin(rot)*0.9);
+      group.add(ball); lanternHalos.push(lm);
+    }
+    /* 真实建筑模型（KayKit 低多边形房屋），失败回退为白描盒 */
+    if (LIB.buildings.length){
+      const src = LIB.buildings[idx % LIB.buildings.length];
+      const m = src.clone(true);
+      const box=new THREE.Box3().setFromObject(m);
+      const size=box.getSize(new THREE.Vector3());
+      const s=(Math.max(w,d)*1.15)/Math.max(size.x,size.z,1e-3);
+      m.scale.setScalar(s);
+      const box2=new THREE.Box3().setFromObject(m);
+      m.position.set(x-(box2.min.x+box2.max.x)/2, h0-box2.min.y, z-(box2.min.z+box2.max.z)/2);
+      m.rotation.y=rot;
+      m.traverse(o=>{ if(o.isMesh){o.castShadow=o.receiveShadow=Q.shadow;} });
+      group.add(m);
+    } else {
+      const w0=new THREE.MeshLambertMaterial({ color:0xe6dcc6 });
+      const body=new THREE.Mesh(new THREE.BoxGeometry(w,hh,d), w0);
+      body.position.set(x,h0+hh/2,z); body.rotation.y=rot;
+      body.castShadow=body.receiveShadow=Q.shadow;
+      const roof=new THREE.Mesh(new THREE.ConeGeometry(Math.max(w,d)*0.86, rand(1.4,1.9), 4),
+        new THREE.MeshLambertMaterial({ color:0x3a434e }));
+      roof.position.set(x,h0+hh+0.8,z); roof.rotation.y=rot+Math.PI/4; roof.castShadow=Q.shadow;
+      group.add(body,roof);
+    }
+  });
+
+  /* 水车（地标，缓慢转动）——程序化水车属机械构件，非房屋主体 */
+  const wx=VILLAGE.x+30, wz=VILLAGE.z-26, wh=getHeight(wx,wz);
+  const frame=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.8,4.2,6), wallM2);
+  frame.position.set(wx,wh+2.1,wz); frame.castShadow=Q.shadow; group.add(frame);
+  const wheel=new THREE.Group();
+  const spokeM=new THREE.MeshLambertMaterial({ color:0x5a4028 });
+  for (let i=0;i<8;i++){
+    const sp=new THREE.Mesh(new THREE.BoxGeometry(0.22,4.6,0.3), spokeM);
+    sp.position.y=2.3;
+    const pivot=new THREE.Group(); pivot.add(sp); pivot.rotation.z=i*Math.PI/4;
+    wheel.add(pivot);
+    const pad=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.5,0.34), spokeM);
+    pad.position.y=4.6; pivot.add(pad);
+  }
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(4.4,0.14,6,20), spokeM);
+  wheel.add(ring);
+  wheel.position.set(wx,wh+4.6,wz+2.2);
+  group.add(wheel); windmillBlades.push(wheel);
+  addAABB(wx,wz,4.4,4.4,wh+4.2);
+
+  /* 沿路纸灯笼杆：夜间暖光晕 */
+  const poleM=new THREE.MeshLambertMaterial({ color:0x3d2f22 });
+  for (let z=-100; z<=140; z+=34){
+    const x=roadX(z)+3.2, h=getHeight(x,z);
+    const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.12,3.6,5), poleM);
+    pole.position.set(x,h+1.8,z);
+    const lm=new THREE.MeshBasicMaterial({ color:0xffb45e });
+    const bulb=new THREE.Mesh(new THREE.SphereGeometry(0.3,8,6), lm);
+    bulb.scale.y=1.25;                                   // 椭圆纸灯笼
+    bulb.position.set(x,h+3.7,z);
+    group.add(pole,bulb); lanternHalos.push(lm);
+  }
+  scene.add(group);
+}
+
+/* ============================================================
+ * 7.5 资源异步装载：先加载全部模型，再构建世界并解锁开始按钮
+ * ============================================================ */
+let worldBuilt = false;
+/* 全局错误提示：若脚本/模型加载在顶层崩了，给用户可见反馈而非永远"加载中" */
+addEventListener('error', (e)=>{
+  const lt=$('loadText');
+  if (lt && !worldBuilt) lt.textContent='加载出错：'+(e.message||'资源失败')+'（可尝试点击开始）';
+}, true);
+
+async function loadAllAssets(){
+  /* 角色 / 马 / 敌人（关键模型，逐个加载并装配） */
+  const [knight, horseG, skel] = await Promise.all([
+    loadGLTF(ASSETS.models.knight),
+    loadGLTF(ASSETS.models.horse),
+    loadGLTF(ASSETS.models.skeleton),
+  ]);
+  if (knight)   setupKnight(knight);
+  if (horseG)   setupHorse(horseG);
+  skeletonGLTF = skel || null;
+
+  /* 建筑与树木（用于世界构建的实例模板） */
+  const buildingG = await Promise.all(ASSETS.models.buildings.map(loadGLTF));
+  LIB.buildings = buildingG.filter(Boolean).map(g=>g.scene);
+  const treeG = await Promise.all(ASSETS.models.trees.map(loadGLTF));
+  LIB.trees = treeG.filter(Boolean).map(g=>g.scene);
+
+  /* 高画质启用 HDR 环境光照 */
+  loadEnvironment();
+
+  /* 构建世界（建筑/植被依赖 LIB 模板） */
+  buildVillage();
+  buildVegetation();
+  spawnEnemies(8);
+  worldBuilt = true;
+
+  /* 就绪：改文案（按钮其实一直可点） */
+  $('startBtn').textContent='开 始 游 戏';
+  $('loadText').textContent = LIB.buildings.length? '✅ 资源就绪，点击开始' : '⚠️ 部分模型未加载（已用简化回退），点击开始';
+}
+/* 无论成败都推进，失败则回退为简化模型，绝不卡在加载页 */
+loadAllAssets().catch(err=>{
+  console.error('资源加载异常:', err);
+  if (!worldBuilt){
+    try{ buildVillage(); buildVegetation(); spawnEnemies(8); worldBuilt=true; }catch(e){ console.error(e); }
+    $('startBtn').textContent='开 始 游 戏';
+    $('loadText').textContent='⚠️ 模型加载失败，已进入简化模式，点击开始';
+  }
+});
+
+/* ============================================================
+ * 8. 天气粒子（雨/雪共用一套 Points 池，控制数量上限）
+ * ============================================================ */
+const P_MAX = QUALITY.high.particles;
+const pGeo = new THREE.BufferGeometry();
+const pPos = new Float32Array(P_MAX*3);
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos,3));
+const pMat = new THREE.PointsMaterial({ color:0xaaccee, size:0.14, transparent:true, opacity:0.7, depthWrite:false });
+const precip = new THREE.Points(pGeo, pMat);
+precip.frustumCulled=false; precip.visible=false;
+scene.add(precip);
+const pVel = new Float32Array(P_MAX);
+function resetParticles(){
+  for (let i=0;i<P_MAX;i++){
+    pPos[i*3]  = camera.position.x + rand(-28,28);
+    pPos[i*3+1]= camera.position.y + rand(0,26);
+    pPos[i*3+2]= camera.position.z + rand(-28,28);
+    pVel[i] = STATE.weather==='snow' ? rand(1.5,3) : rand(14,22);
+  }
+}
+function updateParticles(dt){
+  if (!precip.visible) return;
+  const n = Math.min(Q.particles, P_MAX);
+  const snow = STATE.weather==='snow';
+  for (let i=0;i<n;i++){
+    pPos[i*3+1]-=pVel[i]*dt;
+    if (snow){ pPos[i*3]+=Math.sin(performance.now()*0.001+i)*dt*0.8; }
+    if (pPos[i*3+1] < camera.position.y-6){
+      pPos[i*3]  = camera.position.x + rand(-28,28);
+      pPos[i*3+1]= camera.position.y + rand(16,26);
+      pPos[i*3+2]= camera.position.z + rand(-28,28);
+    }
+  }
+  /* 超出数量上限的粒子挪到远处隐藏 */
+  for (let i=n;i<P_MAX;i++){ pPos[i*3+1] = -999; }
+  pGeo.attributes.position.needsUpdate = true;
+}
+
+/* ============================================================
+ * 9. 昼夜循环 + 天气状态机（电影感色彩：暖金晨昏 / 冷青夜色）
+ * ============================================================ */
+const DAY_LEN = 480;                       // 一昼夜秒数
+const skyDay   = { top:new THREE.Color(0x3a6ea8), bot:new THREE.Color(0xd8e4ec) };
+const skyDusk  = { top:new THREE.Color(0x4a3a5e), bot:new THREE.Color(0xffa04e) };
+const skyNight = { top:new THREE.Color(0x060a16), bot:new THREE.Color(0x0e1626) };
+const fogC = new THREE.Color();
+const hemiSkyC = new THREE.Color(), hemiGndC = new THREE.Color();
+
+function updateSkyAndLight(){
+  const t = STATE.timeOfDay;
+  const ang = (t-0.25)*TAU;                 // t=0.25 日出
+  const sunDir = new THREE.Vector3(Math.cos(ang), Math.sin(ang), 0.25).normalize();
+  skyUniforms.sunDir.value.copy(sunDir);
+  const day = clamp(sunDir.y*1.6+0.15, 0, 1);          // 白昼强度
+  const dusk = clamp(1-Math.abs(sunDir.y)*3, 0, 1);    // 晨昏强度（金色时刻）
+  skyUniforms.duskAmt.value = dusk;
+  /* 天空配色 */
+  const top = skyNight.top.clone().lerp(skyDay.top, day).lerp(skyDusk.top, dusk*0.55);
+  const bot = skyNight.bot.clone().lerp(skyDay.bot, day).lerp(skyDusk.bot, dusk*0.85);
+  skyUniforms.topColor.value.copy(top);
+  skyUniforms.bottomColor.value.copy(bot);
+  skyUniforms.nightMix.value = 1-day;
+  /* 光照：低角度暖金（电影感长影），正午转中性，夜晚微光 */
+  sun.position.copy(player.pos).addScaledVector(sunDir, 160);
+  sun.target.position.copy(player.pos);
+  sun.intensity = lerp(0.04, 2.0, day) * (STATE.weather==='clear'?1:0.5);
+  if (dusk > 0.35)      sun.color.setHex(0xff8f4a);    // 晨昏暖橙
+  else if (day > 0.6)   sun.color.setHex(0xfff0d8);    // 正午暖白
+  else                  sun.color.setHex(0x8fa8d8);    // 夜
+  hemi.intensity = lerp(0.16, 0.85, day) * (STATE.weather==='clear'?1:0.75);
+  hemiSkyC.copy(top).lerp(new THREE.Color(0xffffff), 0.25);
+  hemiGndC.setHex(0x6a5a3a).lerp(new THREE.Color(0x2a2418), 1-day);
+  hemi.color.copy(hemiSkyC); hemi.groundColor.copy(hemiGndC);
+  /* 雾 */
+  let fogDensity = 1;
+  if (STATE.weather==='fog') fogDensity=0.35;
+  if (STATE.weather==='rain') fogDensity=0.7;
+  if (STATE.weather==='snow') fogDensity=0.55;
+  scene.fog.far = Q.fogFar * fogDensity;
+  fogC.copy(bot).lerp(new THREE.Color(0x9aa5ad), STATE.weather==='clear'?0:0.5);
+  scene.fog.color.copy(fogC);
+  /* 云：晨昏染上金边 */
+  cloudMat.opacity = lerp(0.12, 0.72, day);
+  if (STATE.weather!=='clear') cloudMat.color.setHex(0x9fa8b0);
+  else if (dusk>0.35) cloudMat.color.setHex(0xffd9a8);
+  else cloudMat.color.setHex(0xffffff);
+  /* 灯笼与萤火：入夜渐亮 */
+  const lampGlow = clamp(1-day*1.8+0.1, 0.15, 1);
+  for (const lm of lanternHalos) lm.color.setHSL(0.085, 0.85, 0.35+0.3*lampGlow);
+  moteMat.opacity = clamp((1-day)*1.1 + dusk*0.5, 0.12, 0.9) * (STATE.weather==='clear'?1:0.4);
+}
+
+const WEATHERS = ['clear','rain','snow','fog'];
+function updateWeather(dt){
+  STATE.weatherT -= dt;
+  if (STATE.weatherT <= 0){
+    STATE.weatherT = rand(45, 90);
+    const next = WEATHERS[(rng()*WEATHERS.length)|0];
+    if (next !== STATE.weather){
+      STATE.weather = next;
+      precip.visible = (next==='rain' || next==='snow');
+      if (precip.visible){
+        pMat.color.setHex(next==='snow'?0xffffff:0x9fbfe8);
+        pMat.size = next==='snow'?0.22:0.12;
+        resetParticles();
+      }
+      hint(next==='clear'?'☀️ 天气转晴了':next==='rain'?'🌧️ 下雨了':next==='snow'?'❄️ 下雪了':'🌫️ 起雾了');
+    }
+  }
+  updateParticles(dt);
+}
+
+/* ============================================================
+ * 10. 角色（玩家）：KayKit Knight 骨骼动画 GLB（CC0）
+ *     含 AnimationMixer 状态机（idle/walk/run/attack）；加载失败回退为胶囊人
+ * ============================================================ */
+/* 通用：从 GLTF 中按名称找动画剪辑（大小写/空格不敏感） */
+function findClip(clips, ...keys){
+  const low = clips.map(c=>c.name.toLowerCase().replace(/[\s_-]/g,''));
+  for (const k of keys){
+    const i = low.findIndex(n=>n.includes(k));
+    if (i>=0) return clips[i];
+  }
+  return null;
+}
+/* 让模型所有网格投影阴影、并提取包围盒用于缩放归一 */
+function prepModel(root, targetHeight){
+  root.traverse(o=>{ if (o.isMesh){ o.castShadow=Q.shadow; o.frustumCulled=true;
+    if (o.material){ o.material.metalness=Math.min(o.material.metalness??0,0.2); } } });
+  const box=new THREE.Box3().setFromObject(root);
+  const size=box.getSize(new THREE.Vector3());
+  const s=targetHeight/Math.max(size.y,1e-3);
+  root.scale.setScalar(s);
+  /* 让脚底对齐 y=0 */
+  const box2=new THREE.Box3().setFromObject(root);
+  root.position.y -= box2.min.y;
+  return root;
+}
+
+/* 回退：极简胶囊小人（仅当 GLB 加载失败时使用） */
+function makeFallbackHumanoid(cloth=0x3f6ea5){
+  const g=new THREE.Group();
+  const m=new THREE.MeshLambertMaterial({color:cloth});
+  const body=new THREE.Mesh(new THREE.CapsuleGeometry(0.34,0.8,4,8), m); body.position.y=1.0;
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.22,10,8), new THREE.MeshLambertMaterial({color:0xd9a066}));
+  head.position.y=1.62; g.add(body,head);
+  g.traverse(o=>{ if(o.isMesh) o.castShadow=Q.shadow; });
+  return { g, head, armL:null, armR:null, legL:null, legR:null, torso:body, mixer:null, actions:null, fallback:true };
+}
+
+/* 玩家：KayKit Knight */
+const playerRig = { g:new THREE.Group(), mixer:null, actions:null, cur:null, fallback:false };
+scene.add(playerRig.g);
+let P = { g:playerRig.g, armL:null, armR:null, legL:null, legR:null, torso:null, fallback:true };
+
+function setupKnight(gltf){
+  const model = prepModel(gltf.scene.clone(true), 1.8);
+  playerRig.g.add(model);
+  const mixer = new THREE.AnimationMixer(model);
+  const clips = gltf.animations||[];
+  const actions = {
+    idle:   findClip(clips,'idle'),
+    walk:   findClip(clips,'walk'),
+    run:    findClip(clips,'run','sprint'),
+    attack: findClip(clips,'attack','slash','melee','1h'),
+    jump:   findClip(clips,'jump'),
+  };
+  const acts={};
+  for (const k in actions){ if (actions[k]) acts[k]=mixer.clipAction(actions[k]); }
+  playerRig.mixer=mixer; playerRig.actions=acts;
+  if (acts.idle){ acts.idle.play(); playerRig.cur='idle'; }
+  P = { g:playerRig.g, armL:null, armR:null, legL:null, legR:null, torso:null, fallback:false };
+}
+function playPlayer(name, fade=0.18, once=false){
+  const a=playerRig.actions; if(!a||!a[name]||playerRig.cur===name) return;
+  const next=a[name], prev=playerRig.cur?a[playerRig.cur]:null;
+  next.reset();
+  if (once){ next.setLoop(THREE.LoopOnce,1); next.clampWhenFinished=true; }
+  if (prev){ next.crossFadeFrom(prev, fade, false); }
+  next.play(); playerRig.cur=name;
+}
+
+const player = {
+  pos: new THREE.Vector3(roadX(20)+2, 5, 20),
+  vel: new THREE.Vector3(),
+  yaw: Math.PI,               // 面朝 -z
+  onGround:false, sprintT:0, attackT:0, attackCd:0, hp:100,
+  radius:0.45, eyeH:1.55, speedWalk:6, speedSprint:10.5,
+  climbing:false, vaultT:0,
+};
+player.pos.y = getHeight(player.pos.x, player.pos.z);
+
+/* ---------- 马：Three.js 官方 Horse.glb（真实骨骼+奔跑动画） ---------- */
+const horseRig = { g:new THREE.Group(), mixer:null, run:null };
+scene.add(horseRig.g);
+const H = { g:horseRig.g, legs:[], fallback:true };
+const horse = { pos:new THREE.Vector3(roadX(8)-4, 0, 8), yaw:0.6, speed:0, vel:new THREE.Vector3() };
+horse.pos.y = getHeight(horse.pos.x, horse.pos.z);
+
+function setupHorse(gltf){
+  const model = prepModel(gltf.scene, 1.75);     // 肩高
+  horseRig.g.add(model);
+  const mixer = new THREE.AnimationMixer(model);
+  const clip = (gltf.animations&&gltf.animations[0])||null;
+  if (clip){ const a=mixer.clipAction(clip); a.play(); horseRig.run=a; }
+  horseRig.mixer=mixer; H.fallback=false;
+}
+
+/* ============================================================
+ * 11. 敌人：KayKit Skeleton Warrior 骨骼 GLB（CC0）
+ * ============================================================ */
+const enemies=[];
+let skeletonGLTF=null;
+function spawnEnemies(n){
+  for (let i=0;i<n;i++){
+    let x,z,guard=0;
+    do { x=rand(-WORLD*0.4,WORLD*0.4); z=rand(-WORLD*0.4,WORLD*0.4); }
+    while ((distVillage(x,z)<VILLAGE.r+20 || onRoad(x,z)) && guard++<50);
+    const e={ pos:new THREE.Vector3(x,getHeight(x,z),z), yaw:rng()*TAU, hp:50,
+      wanderT:rand(1,4), atkCd:0, hitT:0, dead:false, mixer:null, actions:null, cur:null, g:null, torso:null };
+    if (skeletonGLTF){
+      const model = prepModel(skeletonClone(skeletonGLTF.scene), 1.75);
+      const g=new THREE.Group(); g.add(model); g.position.copy(e.pos); scene.add(g);
+      e.g=g;
+      const mixer=new THREE.AnimationMixer(model);
+      const clips=skeletonGLTF.animations||[];
+      const acts={};
+      const idle=findClip(clips,'idle'), walk=findClip(clips,'walk','run'),
+            atk=findClip(clips,'attack','slash','melee'), death=findClip(clips,'death','die');
+      if(idle)acts.idle=mixer.clipAction(idle);
+      if(walk)acts.walk=mixer.clipAction(walk);
+      if(atk)acts.attack=mixer.clipAction(atk);
+      if(death)acts.death=mixer.clipAction(death);
+      if(acts.idle){acts.idle.play();e.cur='idle';}
+      e.mixer=mixer; e.actions=acts;
+    } else {
+      const fb=makeFallbackHumanoid(0x8a4a4a); fb.g.position.copy(e.pos); scene.add(fb.g);
+      e.g=fb.g; e.torso=fb.torso; e.fb=fb;
+    }
+    enemies.push(e);
+  }
+}
+function playEnemy(e,name,fade=0.15,once=false){
+  const a=e.actions; if(!a||!a[name]||e.cur===name)return;
+  const next=a[name], prev=e.cur?a[e.cur]:null;
+  next.reset(); if(once){next.setLoop(THREE.LoopOnce,1);next.clampWhenFinished=true;}
+  if(prev)next.crossFadeFrom(prev,fade,false);
+  next.play(); e.cur=name;
+}
+
+function updateEnemies(dt){
+  for (const e of enemies){
+    if (e.mixer) e.mixer.update(dt);
+    if (e.dead) continue;
+    e.atkCd-=dt; e.hitT-=dt;
+    const dP = e.pos.distanceTo(player.pos);
+    let speed=0;
+    if (dP < 2.2){                                   // 攻击
+      playEnemy(e,'attack',0.1,true);
+      if (e.atkCd<=0 && !STATE.paused){
+        e.atkCd=1.4;
+        player.hp = Math.max(0, player.hp-8);
+        $('hpFill').style.width = player.hp+'%';
+        sfx(180,0.15,'sawtooth');
+        if (player.hp<=0){ respawn(); }
+      }
+    } else if (dP < 20 && dP > 1.4){                 // 追击
+      e.yaw = Math.atan2(player.pos.x-e.pos.x, player.pos.z-e.pos.z);
+      speed = 3.4;
+      playEnemy(e,'walk');
+    } else {                                          // 徘徊
+      e.wanderT-=dt;
+      if (e.wanderT<=0){ e.wanderT=rand(2,5); e.yaw += rand(-1.5,1.5); }
+      speed = 1.0;
+      playEnemy(e, speed>0?'walk':'idle');
+    }
+    if (speed>0){
+      e.pos.x += Math.sin(e.yaw)*speed*dt;
+      e.pos.z += Math.cos(e.yaw)*speed*dt;
+      e.pos.x = clamp(e.pos.x,-WORLD*0.48,WORLD*0.48);
+      e.pos.z = clamp(e.pos.z,-WORLD*0.48,WORLD*0.48);
+    }
+    e.pos.y = getHeight(e.pos.x, e.pos.z);
+    e.g.position.copy(e.pos);
+    e.g.rotation.y = e.yaw;
+    /* 回退模型的简单摆腿 */
+    if (e.fb && e.fb.legL){
+      const t=performance.now()*0.008, sw=speed>0?Math.sin(t)*0.55:0;
+      e.fb.legL.rotation.x=sw; e.fb.legR.rotation.x=-sw;
+    }
+  }
+}
+function respawn(){
+  player.hp=100; $('hpFill').style.width='100%';
+  player.pos.set(roadX(20)+2, 0, 20);
+  player.pos.y=getHeight(player.pos.x, player.pos.z);
+  player.vel.set(0,0,0);
+  hint('💫 你在村庄里醒了过来…');
+}
+
+/* ============================================================
+ * 12. 战斗：近战挥砍（扇形判定 + 伤害飘字）
+ * ============================================================ */
+function doAttack(){
+  if (player.attackCd>0) return;
+  player.attackCd=0.5; player.attackT=0.4;
+  playPlayer('attack',0.08,true);                    // 播放挥砍动画
+  sfx(520,0.08,'square',0.12);
+  const dir = new THREE.Vector3(Math.sin(cam.yaw),0,Math.cos(cam.yaw));
+  for (const e of enemies){
+    if (e.dead) continue;
+    const to = e.pos.clone().sub(player.pos); to.y=0;
+    const d = to.length();
+    if (d<2.8 && to.normalize().dot(dir)>0.35){
+      e.hp-=25; e.hitT=0.15;
+      e.pos.addScaledVector(dir, 0.8);               // 击退
+      spawnDmg(e.pos, 25);
+      sfx(140,0.12,'sawtooth',0.2);
+      if (e.hp<=0){
+        e.dead=true;
+        if (e.actions && e.actions.death){ playEnemy(e,'death',0.1,true); }
+        else { e.g.rotation.x = -Math.PI/2; e.g.position.y += 0.2; }
+        hint('⚔️ 击倒了骷髅武士！');
+      }
+    }
+  }
+}
+function spawnDmg(worldPos, n){
+  const v = worldPos.clone(); v.y+=2;
+  v.project(camera);
+  if (v.z>1) return;
+  const el = document.createElement('div');
+  el.className='dmg'; el.textContent='-'+n;
+  el.style.left = ((v.x*0.5+0.5)*innerWidth)+'px';
+  el.style.top  = ((-v.y*0.5+0.5)*innerHeight)+'px';
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 800);
+}
+
+/* ============================================================
+ * 13. 输入系统：触控（多点） + 键鼠
+ * ============================================================ */
+const input = {
+  moveX:0, moveY:0,            // 摇杆向量（-1~1）
+  lookDX:0, lookDY:0,          // 本帧镜头增量
+  jump:false, attack:false, dash:false, use:false, horse:false,
+  dashHold:false,
+  keys:{},
+};
+
+/* ----- 虚拟摇杆 ----- */
+const joyZone=$('joyZone'), joyKnob=$('joyKnob');
+let joyId=null, joyCenter={x:0,y:0};
+joyZone.addEventListener('touchstart', e=>{
+  e.preventDefault();
+  const t=e.changedTouches[0];
+  joyId=t.identifier;
+  const r=joyZone.getBoundingClientRect();
+  joyCenter={x:r.left+r.width/2, y:r.top+r.height/2};
+  joyMove(t);
+},{passive:false});
+function joyMove(t){
+  const r=joyZone.getBoundingClientRect(), R=r.width/2;
+  let dx=t.clientX-joyCenter.x, dy=t.clientY-joyCenter.y;
+  const len=Math.hypot(dx,dy);
+  if (len>R){ dx=dx/len*R; dy=dy/len*R; }
+  joyKnob.style.transform=`translate(${dx}px,${dy}px)`;
+  input.moveX = dx/R; input.moveY = dy/R;
+}
+addEventListener('touchmove', e=>{
+  for (const t of e.changedTouches){
+    if (t.identifier===joyId){ e.preventDefault(); joyMove(t); }
+    else if (t.identifier===lookId){
+      e.preventDefault();
+      input.lookDX += (t.clientX-lookLast.x)*2.6;
+      input.lookDY += (t.clientY-lookLast.y)*2.6;
+      lookLast={x:t.clientX,y:t.clientY};
+    }
+  }
+},{passive:false});
+addEventListener('touchend', e=>{
+  for (const t of e.changedTouches){
+    if (t.identifier===joyId){ joyId=null; input.moveX=input.moveY=0;
+      joyKnob.style.transform='translate(0,0)'; }
+    if (t.identifier===lookId) lookId=null;
+  }
+});
+
+/* ----- 右侧镜头滑动区 ----- */
+let lookId=null, lookLast={x:0,y:0};
+$('lookZone').addEventListener('touchstart', e=>{
+  e.preventDefault();
+  const t=e.changedTouches[0];
+  lookId=t.identifier; lookLast={x:t.clientX,y:t.clientY};
+},{passive:false});
+
+/* ----- 动作按钮（touch 绑定；mouse 端也可用点击） ----- */
+function bindBtn(id, key){
+  const el=$(id);
+  const on =e=>{ e.preventDefault(); el.classList.add('hold'); input[key]=true;
+    if (key==='dash') input.dashHold=true; };
+  const off=e=>{ e.preventDefault(); el.classList.remove('hold');
+    if (key==='dash') input.dashHold=false; };
+  el.addEventListener('touchstart', on, {passive:false});
+  el.addEventListener('touchend', off, {passive:false});
+  el.addEventListener('touchcancel', off, {passive:false});
+  el.addEventListener('mousedown', on);
+  el.addEventListener('mouseup', off);
+}
+bindBtn('btnJump','jump'); bindBtn('btnAtk','attack'); bindBtn('btnDash','dash');
+bindBtn('btnUse','use'); bindBtn('btnHorse','horse');
+
+/* ----- 键盘 / 鼠标 ----- */
+addEventListener('keydown', e=>{
+  input.keys[e.code]=true;
+  if (e.code==='Space'){ input.jump=true; e.preventDefault(); }
+  if (e.code==='KeyE') input.use=true;
+  if (e.code==='KeyR') input.horse=true;
+  if (e.code==='KeyV') toggleCam();
+  if (e.code==='Escape') togglePause();
+});
+addEventListener('keyup', e=>{ input.keys[e.code]=false; });
+renderer.domElement.addEventListener('mousedown', e=>{ if (STATE.started && !STATE.paused) input.attack=true; });
+addEventListener('mousemove', e=>{
+  if (document.pointerLockElement===renderer.domElement){
+    input.lookDX += e.movementX*1.6; input.lookDY += e.movementY*1.6;
+  }
+});
+renderer.domElement.addEventListener('dblclick', ()=>renderer.domElement.requestPointerLock());
+
+/* 禁止浏览器默认手势 */
+document.addEventListener('gesturestart', e=>e.preventDefault());
+document.addEventListener('dblclick', e=>e.preventDefault());
+document.addEventListener('contextmenu', e=>e.preventDefault());
+
+/* ============================================================
+ * 14. 相机控制（第一/第三人称 + 俯仰限制）
+ * ============================================================ */
+const cam = { yaw:player.yaw, pitch:0.22, dist:6.2 };
+function toggleCam(){
+  STATE.firstPerson=!STATE.firstPerson;
+  $('crosshair').style.display = STATE.firstPerson?'block':'none';
+  $('pqCam').textContent = STATE.firstPerson?'第一人称':'第三人称';
+  hint(STATE.firstPerson?'🎥 第一人称':'🎥 第三人称');
+}
+
+/* ============================================================
+ * 15. 物理：重力 / 地面 / AABB 站立与翻越 / 圆形推挤
+ * ============================================================ */
+function groundAt(x,z,feetY){
+  /* 返回脚下支撑面高度：地形 或 AABB 顶面（屋顶） */
+  let g = getHeight(x,z);
+  for (const b of aabbs){
+    if (x>b.minX && x<b.maxX && z>b.minZ && z<b.maxZ){
+      if (feetY >= b.top-0.5 && b.top>g) g=b.top;   // 只允许从上方落上去
+    }
+  }
+  return g;
+}
+function collideCircles(p, r){
+  for (const c of circles){
+    const dx=p.x-c.x, dz=p.z-c.z, d=Math.hypot(dx,dz), min=c.r+r;
+    if (d<min && d>1e-4){ p.x=c.x+dx/d*min; p.z=c.z+dz/d*min; }
+  }
+}
+/* 侧向 AABB 推出（不能穿墙）+ 检测可翻越/可攀爬 */
+function collideAABB(p, r, feetY){
+  let wallAhead=null;
+  for (const b of aabbs){
+    const nx=clamp(p.x,b.minX,b.maxX), nz=clamp(p.z,b.minZ,b.maxZ);
+    const dx=p.x-nx, dz=p.z-nz, d=Math.hypot(dx,dz);
+    const standingOn = feetY >= b.top-0.5;
+    if (standingOn) continue;                       // 站在屋顶时不再碰撞该盒
+    if (d < r){
+      const wallTop = b.top - feetY;
+      if (wallTop <= 0.6){ /* 矮台直接翻越由 vault 处理 */ wallAhead={b,wallTop}; }
+      else if (wallTop <= 1.5){ wallAhead={b,wallTop}; }
+      /* 推出 */
+      if (d>1e-4){ p.x=nx+dx/d*r; p.z=nz+dz/d*r; }
+      else { p.x+=r; }
+    }
+  }
+  return wallAhead;
+}
+
+/* ============================================================
+ * 16. 玩家/马匹 更新（移动、跳跃、冲刺、攀爬、翻越、骑乘）
+ * ============================================================ */
+function nearHorse(){ return player.pos.distanceTo(horse.pos) < 3.2; }
+
+function mountToggle(){
+  if (STATE.riding){                                 // 下马
+    STATE.riding=false;
+    player.pos.copy(horse.pos).add(new THREE.Vector3(1.2,0,0));
+    player.pos.y=getHeight(player.pos.x,player.pos.z);
+    P.g.visible = !STATE.firstPerson;
+    $('btnHorse').querySelector('span').textContent='🐎';
+    $('btnHorse').lastChild.textContent='上马';
+  } else if (nearHorse()){                           // 上马
+    STATE.riding=true;
+    P.g.visible=false;
+    $('btnHorse').querySelector('span').textContent='🚶';
+    $('btnHorse').lastChild.textContent='下马';
+    hint('🏇 冲刺时马会飞奔！');
+  }
+}
+
+function updatePlayer(dt){
+  /* --- 读输入合成移动方向（相机相对） --- */
+  let mx=input.moveX, my=input.moveY;
+  if (input.keys['KeyW']) my-=1;
+  if (input.keys['KeyS']) my+=1;
+  if (input.keys['KeyA']) mx-=1;
+  if (input.keys['KeyD']) mx+=1;
+  const mLen=Math.hypot(mx,my);
+  if (mLen>1){ mx/=mLen; my/=mLen; }
+  const sprint = input.dashHold || input.keys['ShiftLeft'] || input.keys['ShiftRight'];
+
+  /* --- 镜头角度 --- */
+  cam.yaw   -= input.lookDX*0.0028;
+  cam.pitch  = clamp(cam.pitch + input.lookDY*0.0028, -0.55, 1.1);
+  input.lookDX=input.lookDY=0;
+
+  if (STATE.riding){
+    /* ================= 骑乘模式 ================= */
+    const target = mLen>0.05 ? (sprint?16:8.5) : 0;
+    horse.speed = lerp(horse.speed, target, dt*3);
+    if (mLen>0.05){
+      const dir = Math.atan2(mx,-my) + cam.yaw;      // 摇杆相对镜头方向
+      let dy = dir - horse.yaw;
+      while(dy>Math.PI)dy-=TAU; while(dy<-Math.PI)dy+=TAU;
+      horse.yaw += clamp(dy, -2.6*dt, 2.6*dt);
+    }
+    horse.pos.x += Math.sin(horse.yaw)*horse.speed*dt;
+    horse.pos.z += Math.cos(horse.yaw)*horse.speed*dt;
+    horse.pos.x=clamp(horse.pos.x,-WORLD*0.48,WORLD*0.48);
+    horse.pos.z=clamp(horse.pos.z,-WORLD*0.48,WORLD*0.48);
+    collideCircles(horse.pos, 0.7);
+    horse.pos.y = groundAt(horse.pos.x, horse.pos.z, horse.pos.y+2);
+    player.pos.copy(horse.pos); player.pos.y=horse.pos.y+1.9;
+    player.yaw = horse.yaw;
+    /* 马匹骨骼动画（奔跑剪辑时间随速度缩放） */
+    H.g.position.copy(horse.pos);
+    H.g.rotation.y = horse.yaw - Math.PI/2;
+    if (horseRig.mixer){
+      if (horseRig.run) horseRig.run.timeScale = clamp(horse.speed/6, 0.05, 2.2);
+      horseRig.mixer.update(dt);
+    } else if (H.legs.length){
+      const t=performance.now()*0.012*(horse.speed>10?1.4:1);
+      const sw=Math.sin(t)*clamp(horse.speed/10,0,1)*0.7;
+      H.legs[0].rotation.z=sw; H.legs[1].rotation.z=-sw;
+      H.legs[2].rotation.z=-sw; H.legs[3].rotation.z=sw;
+    }
+    if (input.horse){ input.horse=false; mountToggle(); }
+    if (input.jump){ input.jump=false; }             // 骑马时不跳
+    player.onGround=true;
+  } else {
+    /* ================= 步行模式 ================= */
+    const speed = sprint ? player.speedSprint : player.speedWalk;
+    const dir = Math.atan2(mx,-my) + cam.yaw;
+    let vx=0, vz=0;
+    if (mLen>0.05){ vx=Math.sin(dir)*speed*mLen; vz=Math.cos(dir)*speed*mLen; player.yaw=dir; }
+
+    /* 重力 */
+    player.vel.y -= 22*dt;
+    if (input.jump && player.onGround){
+      player.vel.y = 8.2; player.onGround=false; sfx(300,0.1,'sine',0.15);
+    }
+    input.jump=false;
+
+    player.vel.x = lerp(player.vel.x, vx, dt*10);
+    player.vel.z = lerp(player.vel.z, vz, dt*10);
+    player.pos.addScaledVector(player.vel, dt);
+    player.pos.x=clamp(player.pos.x,-WORLD*0.48,WORLD*0.48);
+    player.pos.z=clamp(player.pos.z,-WORLD*0.48,WORLD*0.48);
+    collideCircles(player.pos, player.radius);
+
+    /* 墙体碰撞（积分后推出防穿墙），并检测攀爬/翻越 */
+    const wall = collideAABB(player.pos, player.radius, player.pos.y);
+    player.climbing=false;
+    if (wall && wall.wallTop>0.6 && wall.wallTop<=2.6 && mLen>0.3 && !player.onGround){
+      player.climbing=true;
+      player.vel.y = 2.2;                            // 缓慢上攀
+    } else if (wall && wall.wallTop>0 && wall.wallTop<=0.6 && mLen>0.3 && player.onGround){
+      /* 自动翻越矮台 */
+      player.pos.y = wall.b.top;
+      player.vel.y = Math.max(player.vel.y, 0);
+    }
+
+    /* 地面支撑（地形 / 屋顶） */
+    const g = groundAt(player.pos.x, player.pos.z, player.pos.y);
+    if (player.pos.y <= g){
+      player.pos.y = g; player.vel.y = 0; player.onGround=true;
+    } else if (player.pos.y > g+0.05){
+      player.onGround=false;
+    }
+
+    /* 攻击 / 互动 / 上马 */
+    if (input.attack){ input.attack=false; doAttack(); }
+    if (input.use){ input.use=false;
+      if (distVillage(player.pos.x,player.pos.z)<VILLAGE.r) hint('🏮 枫谷村：黛瓦白墙，屋顶可跑酷！');
+      else hint('🍂 风掠过枫林，远山如黛…');
+    }
+    if (input.horse){ input.horse=false; mountToggle(); }
+
+    /* 玩家骨骼动画状态机 */
+    P.g.position.copy(player.pos);
+    P.g.rotation.y = player.yaw;
+    P.g.visible = !STATE.firstPerson;
+    player.attackCd-=dt;
+    if (player.attackT>0) player.attackT-=dt;
+    if (playerRig.mixer){
+      /* 攻击动画播完后回到移动/待机 */
+      if (playerRig.cur==='attack' && player.attackT<=0){
+        playerRig.cur=null;      // 允许重新切换
+      }
+      if (playerRig.cur!=='attack'){
+        const spd=Math.hypot(player.vel.x,player.vel.z);
+        if (!player.onGround)      playPlayer('jump',0.15);
+        else if (spd>7)            playPlayer('run');
+        else if (spd>0.4)          playPlayer('walk');
+        else                       playPlayer('idle');
+      }
+      playerRig.mixer.update(dt);
+    }
+  }
+
+  /* 相机 */
+  const eye = player.pos.clone(); eye.y += STATE.riding?2.6:player.eyeH;
+  if (STATE.firstPerson){
+    camera.position.copy(eye);
+    const look=new THREE.Vector3(
+      Math.sin(cam.yaw)*Math.cos(cam.pitch),
+      -Math.sin(cam.pitch),
+      Math.cos(cam.yaw)*Math.cos(cam.pitch));
+    camera.lookAt(eye.clone().add(look));
+  } else {
+    const back=new THREE.Vector3(
+      -Math.sin(cam.yaw)*Math.cos(cam.pitch),
+      Math.sin(cam.pitch),
+      -Math.cos(cam.yaw)*Math.cos(cam.pitch));
+    let d = STATE.riding? cam.dist+2 : cam.dist;
+    const cp = eye.clone().addScaledVector(back, d);
+    /* 相机不入地 */
+    const cg = getHeight(cp.x,cp.z)+0.4;
+    if (cp.y<cg) cp.y=cg;
+    camera.position.lerp(cp, clamp(dt*10,0,1));
+    camera.lookAt(eye.x, eye.y+0.3, eye.z);
+  }
+}
+
+/* ============================================================
+ * 17. 音效（WebAudio 合成，无外部资源）
+ * ============================================================ */
+let actx=null;
+function sfx(freq, dur, type='sine', vol=0.15){
+  if (STATE.muted) return;
+  try{
+    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+    const o=actx.createOscillator(), g=actx.createGain();
+    o.type=type; o.frequency.setValueAtTime(freq, actx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(Math.max(40,freq*0.5), actx.currentTime+dur);
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime+dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime+dur);
+  }catch(e){}
+}
+function toggleMute(){
+  STATE.muted=!STATE.muted;
+  $('btnMute').textContent = STATE.muted?'🔇':'🔊';
+  $('pqMute').textContent = STATE.muted?'关':'开';
+}
+
+/* ============================================================
+ * 18. HUD / 时钟 / 提示 / 暂停 / 全屏 / 画质切换
+ * ============================================================ */
+let hintTimer=null;
+function hint(text){
+  const el=$('hint'); el.textContent=text; el.style.opacity=1;
+  clearTimeout(hintTimer);
+  hintTimer=setTimeout(()=>el.style.opacity=0, 2600);
+}
+function updateClock(){
+  const t=STATE.timeOfDay, hh=Math.floor(t*24), mm=Math.floor((t*24-hh)*60);
+  const icon = (hh<5||hh>=20)?'🌙':(hh<7?'🌅':(hh<17?'☀️':'🌇'));
+  const w = {clear:'晴',rain:'雨',snow:'雪',fog:'雾'}[STATE.weather];
+  $('clock').textContent=`${icon} ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} · ${w}`;
+}
+function togglePause(){
+  STATE.paused=!STATE.paused;
+  $('pause').style.display=STATE.paused?'flex':'none';
+  if (STATE.paused && document.pointerLockElement) document.exitPointerLock();
+}
+function setQuality(q){
+  STATE.quality=q; Q=QUALITY[q];
+  renderer.setPixelRatio(Math.min(devicePixelRatio, Q.pr));
+  renderer.shadowMap.enabled=Q.shadow;
+  sun.castShadow=Q.shadow;
+  sun.shadow.mapSize.set(Q.shadowRes,Q.shadowRes);
+  if (sun.shadow.map){ sun.shadow.map.dispose(); sun.shadow.map=null; }
+  scene.fog.far=Q.fogFar;
+  scene.traverse(o=>{ if(o.material) o.material.needsUpdate=true; });
+  document.querySelectorAll('[data-q]').forEach(b=>b.classList.toggle('on', b.dataset.q===q));
+  if (STATE.started) hint('画质已切换：'+({low:'低',med:'中',high:'高'}[q]));
+  if (worldBuilt) buildVegetation();      // 按新密度重建植被（实例化重建开销小）
+  if (worldBuilt && q==='high' && !scene.environment) loadEnvironment();  // 升到高画质补 IBL
+}
+document.querySelectorAll('[data-q]').forEach(b=>{
+  b.addEventListener('click', ()=>setQuality(b.dataset.q));
+});
+$('pqCam').addEventListener('click', toggleCam);
+$('pqMute').addEventListener('click', toggleMute);
+$('btnCam').addEventListener('click', toggleCam);
+$('btnMute').addEventListener('click', toggleMute);
+$('btnPause').addEventListener('click', togglePause);
+$('resumeBtn').addEventListener('click', togglePause);
+$('btnFull').addEventListener('click', ()=>{
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(()=>{});
+});
+
+/* ============================================================
+ * 19. 启动流程与横竖屏适配
+ * ============================================================ */
+function onResize(){
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+}
+addEventListener('resize', onResize);
+addEventListener('orientationchange', ()=>setTimeout(onResize, 250));
+
+$('startBtn').addEventListener('click', ()=>{
+  /* 兜底：若用户提前点击而世界还没建（模型仍在加载/失败），立即用回退模型补建 */
+  if (!worldBuilt){
+    try{ buildVillage(); buildVegetation(); spawnEnemies(8); worldBuilt=true; }
+    catch(e){ console.error('回退构建失败:', e); }
+  }
+  $('boot').style.display='none';
+  $('hud').style.display='block';
+  $('vignette').style.display='block';
+  STATE.started=true;
+  try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+  if (innerHeight>innerWidth) hint('📱 横屏体验更佳！');
+  else hint('🍁 欢迎来到风与枫谷！');
+  /* 移动端尝试自动全屏（部分浏览器需用户手势，点击即手势） */
+  if (/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)){
+    document.documentElement.requestFullscreen?.().catch(()=>{});
+  }
+});
+
+/* ============================================================
+ * 20. 主循环（含自动画质降级）
+ * ============================================================ */
+const clockT = new THREE.Clock();
+function loop(){
+  requestAnimationFrame(loop);
+  const dt = Math.min(clockT.getDelta(), 0.05);
+
+  if (STATE.started && !STATE.paused){
+    STATE.timeOfDay = (STATE.timeOfDay + dt/DAY_LEN) % 1;
+    updateWeather(dt);
+    updatePlayer(dt);
+    updateEnemies(dt);
+    updateSkyAndLight();
+    updateClock();
+    /* 风摇时钟（驱动草浪与树冠） */
+    WIND.t.value = performance.now()*0.001;
+    /* 山谷流雾漂移 */
+    { const m4=new THREE.Matrix4(), q=new THREE.Quaternion(), s=new THREE.Vector3(), p=new THREE.Vector3();
+      const mistMesh = vegMeshes[vegMeshes.length-1];
+      if (mistMesh && mistData.length){
+        for (let i=0;i<mistData.length;i++){
+          const md=mistData[i];
+          md.x += md.v*dt; if (md.x>WORLD*0.46) md.x=-WORLD*0.46;
+          p.set(md.x, md.y, md.z); s.set(md.w, md.w*0.28, 1);
+          m4.compose(p,q,s); mistMesh.setMatrixAt(i,m4);
+        }
+        mistMesh.instanceMatrix.needsUpdate = true;
+      } }
+    /* 萤火/花粉 */
+    updateMotes(performance.now()*0.001);
+    /* 水车旋转 */
+    for (const b of windmillBlades) b.rotation.z += dt*0.55;
+    /* 云漂移 */
+    { const m4=new THREE.Matrix4(), q=new THREE.Quaternion();
+      for (let i=0;i<CLOUD_N;i++){
+        const c=cloudData[i];
+        c.p.x += c.v*dt; if (c.p.x>450) c.p.x=-450;
+        m4.compose(c.p,q,c.s); clouds.setMatrixAt(i,m4);
+      }
+      clouds.instanceMatrix.needsUpdate = true; }
+
+    /* ----- 自动降级：持续低帧率则降画质 ----- */
+    fpsStat.acc+=dt; fpsStat.n++;
+    if (fpsStat.acc>=2){
+      const avg=fpsStat.n/fpsStat.acc;
+      fpsStat.acc=0; fpsStat.n=0;
+      if (avg<24){
+        fpsStat.lowT++;
+        if (fpsStat.lowT>=2){
+          fpsStat.lowT=0;
+          if (STATE.quality==='high'){ setQuality('med'); hint('⚡ 已自动降至中画质以保帧率'); }
+          else if (STATE.quality==='med'){ setQuality('low'); hint('⚡ 已自动降至低画质以保帧率'); }
+        }
+      } else fpsStat.lowT=0;
+    }
+  }
+  renderer.render(scene, camera);
+}
+updateSkyAndLight();
+loop();
+</script>
+</body>
+</html>

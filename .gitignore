@@ -1,0 +1,4 @@
+.workbuddy/
+.DS_Store
+nohup.out
+*.log
