@@ -1354,9 +1354,9 @@ function updatePlayer(dt){
   cam.pitch  = clamp(cam.pitch + input.lookDY*0.0028, -0.55, 1.1);
   input.lookDX=input.lookDY=0;
 
-  /* 相机前方与右方（水平面），世界移动方向 = fwd*iz + right*ix */
+  /* 相机前方 fwd 与右方 right（水平面）。右手系 right = fwd × up = (-fz, 0, fx) */
   const fx=Math.sin(cam.yaw), fz=Math.cos(cam.yaw);
-  const rx=fz, rz=-fx;
+  const rx=-fz, rz=fx;
   const moveDir = Math.atan2(fx*iz+rx*ix, fz*iz+rz*ix);
 
   if (STATE.riding){
